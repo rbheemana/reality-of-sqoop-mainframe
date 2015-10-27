@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link href='https://fonts.googleapis.com/css?family=Architects+Daughter' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <title>Reality-of-sqoop-mainframe by rbheemana</title>
+  </head>
+
+  <body>
+    <header>
+      <div class="inner">
+        <h1>Reality-of-sqoop-mainframe</h1>
+        <h2></h2>
+        <a href="https://github.com/rbheemana/reality-of-sqoop-mainframe" class="button"><small>View project on</small> GitHub</a>
+      </div>
+    </header>
+
+    <div id="content-wrapper">
+      <div class="inner clearfix">
+        <section id="main-content">
+          <h3>
+<a id="sqoop-mainframe" class="anchor" href="#sqoop-mainframe" aria-hidden="true"><span class="octicon octicon-link"></span></a>Sqoop-mainframe</h3>
+
+<p>Syncsort submitted a patch (SQOOP-1272) to extend Sqoop for transferring data from Mainframe to Hadoop, allowing multiple Mainframe data sets to be moved to HDFS in parallel. </p>
+
+<ul>
+<li>See more at: <a href="http://blog.syncsort.com/2014/06/big-iron-big-data-mainframe-hadoop-apache-sqoop/#sthash.e6MHJ7dd.dpuf">http://blog.syncsort.com/2014/06/big-iron-big-data-mainframe-hadoop-apache-sqoop/#sthash.e6MHJ7dd.dpuf</a>
+</li>
+</ul>
+
+<p>How to use the utility is detailed at: <a href="https://sqoop.apache.org/docs/1.4.6/SqoopUserGuide.html#_literal_sqoop_import_mainframe_literal">https://sqoop.apache.org/docs/1.4.6/SqoopUserGuide.html#_literal_sqoop_import_mainframe_literal</a></p>
+
+<h3>
+<a id="what-is-missing" class="anchor" href="#what-is-missing" aria-hidden="true"><span class="octicon octicon-link"></span></a>What is missing?</h3>
+
+<p>However based on my validation dated 10/27/2015, below are the some of the important features  that are missed.</p>
+
+<p>1 Sqoop-mainframe can only handle Fixed length files, variable length files are not supported. 
+2 Only folder structures like data can be downloaded i.e., PDS and Fixed length GDGs as a whole. 
+3 EBCIDIC to ASCII conversion return invalid data when the data has computational fields.</p>
+
+<h3>
+<a id="gdg-issue" class="anchor" href="#gdg-issue" aria-hidden="true"><span class="octicon octicon-link"></span></a>GDG Issue</h3>
+
+<p>To be more specific lets look at a common scenario. 
+A Mainframe system updates daily/monthly activities in GDG file. Usually a new version of GDG is created, for that day/month and previous day/month will be in earlier version.
+Example of such dataset in Mainframe will look like this:</p>
+
+<pre><code>   MF.FBFILE.GDG          -- Base
+   MF.FBFILE.GDG.G0001V00  -- 10/27/2015 data
+   MF.FBFILE.GDG.G0002V00  -- 10/28/2015 data
+   MF.FBFILE.GDG.G0003V00  -- 10/29/2015 data
+   MF.FBFILE.GDG.G0004V00  -- 10/30/2015 data
+   MF.FBFILE.GDG.G0005V00  -- 10/31/2015 data
+</code></pre>
+
+<p>Sqoop-mainframe utility will allow us to download the entire GDG meaning all the data (5 days in our example). But in most of our scenarios we are interested only in today's data latest file. Sqoop mainframe will not allow to get a single file, it is all or none.
+Mainframe system usually stores year worth of data in these GDGs which makes it not worth all the files when we actually need single day data.
+In mainframe terminology, we can use MF.FBFILE.GDG(0) to get latest version every day and MF.FBFILE.GDG(-1) to get previous day data and so on. This convention is not supported in sqoop-mainframe, which makes us to write complex logic to get the file version number (such as G0005V00).</p>
+
+<h3>
+<a id="ebcdic-to-ascii-issue" class="anchor" href="#ebcdic-to-ascii-issue" aria-hidden="true"><span class="octicon octicon-link"></span></a>EBCDIC to ASCII Issue</h3>
+
+<p>Sqoop-mainframe automatically converts EBCDIC data to ASCII and then stores on the hadoop. This sounds cool but this fails when the data have computational fileds.
+Almost every file we need from mainframe will computational fields(COMP, COMP-3 etc). In these scenarios, sqoop-mainframe EBCIDIC To ASCII conversion interprets the data incorrectly and returns unreadable characters.
+To interpret mainframe data correctly, we need to have its corresponding cobol copybook layout. Through which we have to exclude the computational fields data and then convert rest of the data from EBCIDIC to ASCII.
+Computational fields needs to be seperately converted based on their representation, usually these fields are represented in binary or big-endian format.</p>
+
+<h3>
+<a id="variable-length-files-issue" class="anchor" href="#variable-length-files-issue" aria-hidden="true"><span class="octicon octicon-link"></span></a>Variable length files issue</h3>
+
+<p>Most important feature support for variable length files is missing in sqoop-mainframe. If we try to give VB length file, sqoop-mainframe return as if that file doesnot exist on mainframe</p>
+
+<h3>
+<a id="work-around-or-how-to-make-it-work" class="anchor" href="#work-around-or-how-to-make-it-work" aria-hidden="true"><span class="octicon octicon-link"></span></a>Work-around or How to make it work?</h3>
+
+<p>So if anyone is planning to use sqoop-mainframe one needs to follow below approach 
+Write a mainframe job  - to convert VB files to FB files 
+                       - to convert computational fields to text
+                       - place the updated file in GDG with only one version
+                       - make sure to delete the older versions in GDG.</p>
+
+<h3>
+<a id="alternate-approach" class="anchor" href="#alternate-approach" aria-hidden="true"><span class="octicon octicon-link"></span></a>Alternate approach</h3>
+
+<p>If process becomes real cumbersome, if your target file needs to be in hive I would suggest you an alternate approach using hive custom serde.</p>
+
+<ul>
+<li>See more at: <a href="http://rbheemana.github.io/Cobol-to-Hive/serde.html">http://rbheemana.github.io/Cobol-to-Hive/serde.html</a>
+</li>
+</ul>
+        </section>
+
+        <aside id="sidebar">
+          <a href="https://github.com/rbheemana/reality-of-sqoop-mainframe/zipball/master" class="button">
+            <small>Download</small>
+            .zip file
+          </a>
+          <a href="https://github.com/rbheemana/reality-of-sqoop-mainframe/tarball/master" class="button">
+            <small>Download</small>
+            .tar.gz file
+          </a>
+
+          <p class="repo-owner"><a href="https://github.com/rbheemana/reality-of-sqoop-mainframe"></a> is maintained by <a href="https://github.com/rbheemana">rbheemana</a>.</p>
+
+          <p>This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the Architect theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.</p>
+        </aside>
+      </div>
+    </div>
+
+  
+  </body>
+</html>
